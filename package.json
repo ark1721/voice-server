@@ -4,8 +4,9 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "start": "node server.js"
-  },
+  "start": "node server.js",
+  "voice": "node voice-server.js"
+},
   "dependencies": {
     "express": "^5.1.0",
     "ws": "^8.18.3"
