@@ -35,7 +35,7 @@ wss.on("connection", (ws) => {
       }
 
       // === Live audio stream ===
-      if (data.type === "audio-chunk" && ws.groupId) {
+     if ((data.type === "audio" || data.type === "audio-chunk") && ws.groupId) {
         const group = groups[ws.groupId];
         if (group) {
           group.forEach((client) => {
