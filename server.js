@@ -36,36 +36,20 @@ wss.on("connection", (ws) => {
       }
 
       // === Audio message for group ===
-      if (data.type === "audio" && ws.groupId) {
-        // Group forwarding
-        groups[ws.groupId]?.forEach((client) => {
-          if (client !== ws && client.readyState === 1) {
-            client.send(
-              JSON.stringify({
+     if (data.type === "audio" && ws.groupId) {
+          // Relay to group
+          groups[ws.groupId]?.forEach((client) => {
+            if (client !== ws && client.readyState === 1) {
+              client.send(JSON.stringify({
                 type: "audio",
                 chunk: data.chunk,
                 sender: data.sender,
-              })
-            );
-          }
-        });
-
-        // 1-to-1 forwarding if targetIds are specified
-        if (data.targetIds && Array.isArray(data.targetIds)) {
-          data.targetIds.forEach((id) => {
-            const targetClient = users[id];
-            if (targetClient && targetClient.readyState === 1) {
-              targetClient.send(
-                JSON.stringify({
-                  type: "audio",
-                  chunk: data.chunk,
-                  sender: data.sender,
-                })
-              );
+                stream: data.stream || false,
+              }));
             }
           });
         }
-      }
+
 
     } catch (err) {
       console.error("Message error:", err);
