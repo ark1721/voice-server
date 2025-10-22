@@ -5,51 +5,52 @@ import http from "http";
 const app = express();
 const server = http.createServer(app);
 
-// Create WebSocket server
 const wss = new WebSocketServer({ server });
 
-// Keep track of online clients
+// Keep track of users and groups
 const groups = {}; // { groupId: Set<ws> }
 const users = {};  // { userId: ws }
 
 wss.on("connection", (ws) => {
-  console.log("Client connected");
+  console.log("🟢 Client connected");
 
   ws.on("message", (msg) => {
     try {
       const data = JSON.parse(msg);
 
-      // === User registration (for 1-to-1) ===
+      // === Register user ===
       if (data.type === "register") {
         users[data.userId] = ws;
         ws.userId = data.userId;
-        console.log(`User registered: ${data.userId}`);
+        console.log(`✅ User registered: ${data.userId}`);
       }
 
-      // === Join a group ===
+      // === Join group ===
       if (data.type === "join") {
         const group = groups[data.groupId] || new Set();
         group.add(ws);
         groups[data.groupId] = group;
         ws.groupId = data.groupId;
-        console.log(`User joined group ${data.groupId}`);
+        console.log(`👥 ${data.userId} joined group ${data.groupId}`);
       }
 
-      // === Audio message for group ===
-     if (data.type === "audio" && ws.groupId) {
-          // Relay to group
-          groups[ws.groupId]?.forEach((client) => {
+      // === Live audio stream ===
+      if (data.type === "audio-chunk" && ws.groupId) {
+        const group = groups[ws.groupId];
+        if (group) {
+          group.forEach((client) => {
             if (client !== ws && client.readyState === 1) {
-              client.send(JSON.stringify({
-                type: "audio",
-                chunk: data.chunk,
-                sender: data.sender,
-                stream: data.stream || false,
-              }));
+              client.send(
+                JSON.stringify({
+                  type: "audio-chunk",
+                  chunk: data.chunk,  // base64-encoded audio
+                  sender: ws.userId,
+                })
+              );
             }
           });
         }
-
+      }
 
     } catch (err) {
       console.error("Message error:", err);
@@ -57,25 +58,16 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
-    // Remove from group
-    if (ws.groupId && groups[ws.groupId]) {
-      groups[ws.groupId].delete(ws);
-    }
-
-    // Remove from user map
-    if (ws.userId && users[ws.userId]) {
-      delete users[ws.userId];
-    }
-
-    console.log(`Client disconnected: ${ws.userId || ws.groupId}`);
+    if (ws.groupId && groups[ws.groupId]) groups[ws.groupId].delete(ws);
+    if (ws.userId && users[ws.userId]) delete users[ws.userId];
+    console.log(`🔴 Disconnected: ${ws.userId || "unknown"}`);
   });
 });
 
 app.get("/", (req, res) => {
-  res.send("✅ Voice WebSocket server running!");
+  res.send("🎙️ Live Voice Streaming WebSocket running!");
 });
 
-// Use Railway port or default
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
