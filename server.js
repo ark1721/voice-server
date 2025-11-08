@@ -4,6 +4,8 @@ import http from "http";
 
 const app = express();
 const server = http.createServer(app);
+
+// Create WebSocket server
 const wss = new WebSocketServer({ server });
 
 // Keep track of online clients
@@ -13,14 +15,11 @@ const users = {};  // { userId: ws }
 wss.on("connection", (ws) => {
   console.log("Client connected");
 
-  // Track groups per connection (for proper leave handling)
-  ws.joinedGroups = new Set();
-
   ws.on("message", (msg) => {
     try {
       const data = JSON.parse(msg);
 
-      // === Register user ===
+      // === User registration (for 1-to-1) ===
       if (data.type === "register") {
         users[data.userId] = ws;
         ws.userId = data.userId;
@@ -32,41 +31,26 @@ wss.on("connection", (ws) => {
         const group = groups[data.groupId] || new Set();
         group.add(ws);
         groups[data.groupId] = group;
-        ws.joinedGroups.add(data.groupId);
-        console.log(`User ${ws.userId} joined group ${data.groupId}`);
+        ws.groupId = data.groupId;
+        console.log(`User joined group ${data.groupId}`);
       }
 
-    // === Leave a group ===
-            if (data.type === "leave" && ws.groupId) {
-              const group = groups[ws.groupId];
-              if (group) {
-                group.delete(ws);
-                if (group.size === 0) delete groups[ws.groupId];
-              }
-              console.log(`User left group ${ws.groupId}`);
-              ws.groupId = null;
-            }
+      // === Audio message for group ===
+      if (data.type === "audio" && ws.groupId) {
+        // Group forwarding
+        groups[ws.groupId]?.forEach((client) => {
+          if (client !== ws && client.readyState === 1) {
+            client.send(
+              JSON.stringify({
+                type: "audio",
+                chunk: data.chunk,
+                sender: data.sender,
+              })
+            );
+          }
+        });
 
-
-      // === Audio broadcast ===
-      if (data.type === "audio" && data.groupId) {
-        const group = groups[data.groupId];
-        if (group) {
-          group.forEach((client) => {
-            if (client !== ws && client.readyState === 1) {
-              client.send(
-                JSON.stringify({
-                  type: "audio",
-                  chunk: data.chunk,
-                  sender: data.sender,
-                  groupId: data.groupId,
-                })
-              );
-            }
-          });
-        }
-
-        // Optional: send to specific users
+        // 1-to-1 forwarding if targetIds are specified
         if (data.targetIds && Array.isArray(data.targetIds)) {
           data.targetIds.forEach((id) => {
             const targetClient = users[id];
@@ -89,19 +73,17 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
-    // Remove from all joined groups
-    ws.joinedGroups?.forEach((groupId) => {
-      const group = groups[groupId];
-      if (group) {
-        group.delete(ws);
-        if (group.size === 0) delete groups[groupId];
-      }
-    });
+    // Remove from group
+    if (ws.groupId && groups[ws.groupId]) {
+      groups[ws.groupId].delete(ws);
+    }
 
-    // Remove from user registry
-    if (ws.userId) delete users[ws.userId];
+    // Remove from user map
+    if (ws.userId && users[ws.userId]) {
+      delete users[ws.userId];
+    }
 
-    console.log(`Client disconnected: ${ws.userId || "unknown"}`);
+    console.log(`Client disconnected: ${ws.userId || ws.groupId}`);
   });
 });
 
@@ -109,6 +91,7 @@ app.get("/", (req, res) => {
   res.send("✅ Voice WebSocket server running!");
 });
 
+// Use Railway port or default
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
