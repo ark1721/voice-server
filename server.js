@@ -36,16 +36,17 @@ wss.on("connection", (ws) => {
         console.log(`User ${ws.userId} joined group ${data.groupId}`);
       }
 
-      // === Leave a group ===
-      if (data.type === "leave") {
-        const group = groups[data.groupId];
-        if (group) {
-          group.delete(ws);
-          if (group.size === 0) delete groups[data.groupId]; // cleanup
-          console.log(`User ${ws.userId} left group ${data.groupId}`);
-        }
-        ws.joinedGroups.delete(data.groupId);
-      }
+    // === Leave a group ===
+            if (data.type === "leave" && ws.groupId) {
+              const group = groups[ws.groupId];
+              if (group) {
+                group.delete(ws);
+                if (group.size === 0) delete groups[ws.groupId];
+              }
+              console.log(`User left group ${ws.groupId}`);
+              ws.groupId = null;
+            }
+
 
       // === Audio broadcast ===
       if (data.type === "audio" && data.groupId) {
