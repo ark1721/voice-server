@@ -5,6 +5,9 @@ import http from "http";
 const app = express();
 const server = http.createServer(app);
 
+// ✅ Create WebSocket server
+const wss = new WebSocketServer({ server });
+
 // Track online clients
 const groups = {}; // { groupId: Set<ws> }
 const users = {};  // { userId: ws }
