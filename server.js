@@ -4,8 +4,6 @@ import http from "http";
 
 const app = express();
 const server = http.createServer(app);
-
-// ✅ Create WebSocket server
 const wss = new WebSocketServer({ server });
 
 // Track online clients
@@ -19,60 +17,54 @@ wss.on("connection", (ws) => {
     try {
       const data = JSON.parse(msg);
 
-      // === User registration ===
+      // === Register user ===
       if (data.type === "register") {
         users[data.userId] = ws;
         ws.userId = data.userId;
-        console.log(`User registered: ${data.userId}`);
+        console.log(`✅ Registered user: ${data.userId}`);
       }
 
-      // === Join a group ===
-      if (data.type === "join") {
-        const group = groups[data.groupId] || new Set();
-        group.add(ws);
-        groups[data.groupId] = group;
-        ws.groupId = data.groupId;
-        console.log(`User joined group ${data.groupId}`);
-      }
-
-      // === Switch group ===
-      if (data.type === "switch") {
-        // Leave old group
+      // === Join / Switch group ===
+      if (data.type === "join" || data.type === "switch") {
+        const newGroupId = data.groupId || data.newGroupId;
         if (ws.groupId && groups[ws.groupId]) {
           groups[ws.groupId].delete(ws);
-          console.log(`User ${ws.userId} left group ${ws.groupId}`);
+          console.log(`🚪 User ${ws.userId} left group ${ws.groupId}`);
         }
 
-        // Join new group
-        const group = groups[data.newGroupId] || new Set();
+        const group = groups[newGroupId] || new Set();
         group.add(ws);
-        groups[data.newGroupId] = group;
-        ws.groupId = data.newGroupId;
-        console.log(`User ${ws.userId} switched to group ${data.newGroupId}`);
+        groups[newGroupId] = group;
+        ws.groupId = newGroupId;
+        console.log(`👥 User ${ws.userId} joined group ${newGroupId}`);
       }
 
-      // === Audio message ===
+      // === Handle audio chunks ===
       if (data.type === "audio" && ws.groupId) {
-        // Broadcast to current group
+        // Stream chunk to other members in the same group
         groups[ws.groupId]?.forEach(client => {
           if (client !== ws && client.readyState === 1) {
             client.send(JSON.stringify({
               type: "audio",
-              chunk: data.chunk,
               sender: data.sender,
+              groupId: ws.groupId,
+              chunk: data.chunk,
+              final: data.final || false
             }));
           }
         });
 
-        // 1-to-1 if targetIds specified
-        if (data.targetIds && Array.isArray(data.targetIds)) {
+        // Optional: targeted 1-to-1 delivery
+        if (Array.isArray(data.targetIds)) {
           data.targetIds.forEach(id => {
-            const targetClient = users[id];
-            if (targetClient && targetClient.readyState === 1) {
-              targetClient.send(JSON.stringify({
+            const target = users[id];
+            if (target && target.readyState === 1) {
+              target.send(JSON.stringify({
                 type: "audio",
-                chunk: data.chunk,
                 sender: data.sender,
+                groupId: ws.groupId,
+                chunk: data.chunk,
+                final: data.final || false
               }));
             }
           });
@@ -85,17 +77,12 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
-    if (ws.groupId && groups[ws.groupId]) {
-      groups[ws.groupId].delete(ws);
-    }
-    if (ws.userId && users[ws.userId]) {
-      delete users[ws.userId];
-    }
-    console.log(`Client disconnected: ${ws.userId || ws.groupId}`);
+    if (ws.groupId && groups[ws.groupId]) groups[ws.groupId].delete(ws);
+    if (ws.userId) delete users[ws.userId];
+    console.log(`🔌 Disconnected: ${ws.userId || "unknown user"}`);
   });
 });
 
 app.get("/", (req, res) => res.send("✅ Voice WebSocket server running!"));
-
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
